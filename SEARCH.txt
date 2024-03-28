@@ -16,7 +16,69 @@ alter database open;
 archive log list;
 select log_mode from v$database;
 
+--Shutdown the database before backing up
+shutdown immediate;
+startup mount;
 
 --Start backup with RMAN
 rman target /
-backup database
+backup database tag 'backup_norachivelog';
+
+--Open ldatabase
+alter database open;
+
+--Open archivelog mode
+sqlplus / as sysdba
+select open_mode from v$database;
+
+--Change log_mode to archive log back
+shutdown immediate;
+startup mount;
+alter database archivelog;
+alter database flashback on;
+alter database open;
+archive log list;
+select log_mode, flashback_on from v$database;
+
+--Backup with catalog database
+--Connect on primary server
+rman target sys/rkp23@primary catalog rcatown/rkp23@orclpdb;
+show all;
+
+--Connect on rmancat server
+rman target sys/rkp23@primary catalog rcatown/rkp23@orclpdb;
+show all;
+backup database plus archivelog;
+
+--Specifying the device type for an RMAN backup
+show device type;
+backup device type disk database;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
