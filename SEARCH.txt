@@ -11,7 +11,9 @@ startup mount;
 alter database flashback off;
 select name, guarantee_flashback_database, pdb_restore_point, clean_pdb_restore_point, 
 pdb_incarnation#, storage_size from v$restore_point;
+drop restore point grp_cdb;
 alter database noarchivelog;
+
 alter database open;
 archive log list;
 select log_mode from v$database;
