@@ -1,1 +1,22 @@
-select name, guarantee_flashback_database, pdb_restore_point, clean_pdb_restore_poiny, pdb_incarnation#, storage_size from
+---BACKING UP THE DATABASE IN NOARCHIVELOG MODE
+
+--Control archivelog mode
+sqlplus / as sysdba
+archive log list
+select log_mode from v$database;
+
+--Close archivelog mode
+shutdown immediate;
+startup mount;
+alter database flashback off;
+select name, guarantee_flashback_database, pdb_restore_point, clean_pdb_restore_poiny, 
+pdb_incarnation#, storage_size from v$restore_point;
+alter database norachivelog;
+alter database open;
+archive log list;
+select log_mode from v$database;
+
+
+--Start backup with RMAN
+rman target /
+backup database
