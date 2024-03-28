@@ -1,0 +1,1 @@
+select name, guarantee_flashback_database, pdb_restore_point, clean_pdb_restore_poiny, pdb_incarnation#, storage_size from
