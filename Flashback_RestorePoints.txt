@@ -1,0 +1,233 @@
+Using flashback query
+sqlplus mytest/rkp23@orclpdb;
+
+col name format a10
+col surname format a10
+
+select * from test_tb1;
+
+update test_tb1 set name='Rohit' where id=1;
+
+commit;
+
+alter session set nls_date_format='dd.mm.yyyy hh24:mi:ss';
+
+--Finding old version of updated value
+select * from (select name from test_tb1 where id=1) as of timestamp sysdate-1/24;
+
+update test_tb1 set name='John' where id=1;
+commit;
+
+---Control archievelog mode
+archieve log list
+select log_mode from v$database;
+
+---Open Archivelog mode
+shutdown immediate;
+startup mount;
+alter database archivelog;
+alter database open;
+
+---Enable force logging and flashback
+alter database force logging;
+
+ALTER SYSTEM SET DB_RECOVERY_FILE_DEST_SIZE=5g scope=both;
+ALTER SYSTEM SET DB_RECOVERY_FILE_DEST='/u01/app/oracle/fast_recovery_area' SCOPE=BOTH;
+
+alter database flashback on;
+select flashback_on from v$database;
+show parameter db_flashback_retention_target
+
+-----OPTIONS------
+--set the length of desired flashback window in minutes
+alter system set db_flashback_retention+target=4320 scope=both;
+
+--we can enable or disable flashback logging for a tablespace
+alter tablespace tbs_data flashback on;
+alter tablespace tbs_data flashback off;
+
+--Disabling flashback database logging
+alter database flashback off;
+
+
+---FLASHBACK TABLE
+sqlplus mytest/rkp23@orclpdb
+drop table test_tb1;
+select object_name, original_name, operation, droptime from user_recyclebin;
+flashback table test_tb1 to before drop;
+
+---FLASHBACK DATABASE
+--Connect container database
+sqlplus / as sysdba
+select current_scn from v$database;
+CURRENT_SCN
+-----------
+    2597256
+
+--Connect pdb
+sqlplus mytest/rkp23@orclpdb
+
+drop table test_tb1 purge;
+
+--Connect container database
+sqlplus / as sysdba
+shutdown immediate;
+startup mount;
+flashback database to scn 2597256;
+alter database open resetlogs;
+
+--Check the dropped table
+sqlplus mytest/rkp23@orclpdb
+
+
+===========================RESTORE POINTS=================================
+
+--CREATING PDB RESTORE POINTS
+sqlplus / as sysdba
+
+--Display the state of PDB
+select name,open_mode from v$pdbs;
+
+--Close the pdb
+alter pluggable database orclpdb close;
+
+alter session set container=orclpdb;
+
+--Create a normal pdb restore point
+create restore point rp_orclpdb;
+
+--Open pdb
+alter pluggable database orclpdb open;
+
+--Connect with test user
+sqlplus mytest/rkp23@orclpdb
+drop table test_tb1;
+
+
+--Flashback to restore point
+sqlplus sys/rkp23@orclpdb as sysdba
+alter pluggable database orclpdb close;
+flashback pluggable database to restore point rp_orclpdb;
+alter pluggable database orclpdb open resetlogs;
+
+--Run with test user
+conn mytest/rkp23@orclpdb
+col name format a10
+col surname format a10
+
+select * from test_tb1;
+
+------------TO CREATE A PDB RESTORE POINT WHEN CONNECTED TO THE CDB----------------
+sqlplus / as sysdba
+
+--close orclpdb
+alter pluggable database orclpdb close;
+
+--Place cdb in mounted state
+shutdown immediate
+startup mount;
+
+--Check the container we are copnnected to
+show con_name
+
+--Select the current container to the root if it is not already
+alter session set container = CDB$ROOT;
+
+--Create a normal pdb restore point
+create restore point  rp_pdb_from_cdb for pluggable database orclpdb;
+create restore point  grp_pdb_from_cdb for pluggable database orclpdb guarantee flashback database;
+
+--Create clean PDB restore point *when pdb is closed and has no pending transactions)
+create clean restore point crp_pdb_from_cdb for pluggable database orclpdb;
+
+
+
+--Creating CDB restore points
+sqlplus / as sysdba
+create restore point rp_cdb;
+
+--Open the cdb
+alter database open;
+
+
+--To create gauranteed restore point
+create restore point  grp_cdb guarantee flashback database;
+
+--Connect with test user
+sqlplus mytest/rkp23@orclpdb
+drop table test_tb1;
+
+--Connect cdb
+sqlplus / as sysdba
+shutdown immediate
+startup mount;
+
+--Flashback to restore point
+flashback database to restore point grp_cdb;
+alter database open resetlogs;
+
+--connect to orclpdb with test user
+sqlplus mytest/rkp23@orclpdb
+select * from test_tb1;
+
+--LISTING THE RESTORE POINTS
+rman target /
+RMAN> list restore point all;
+
+using target database control file instead of recovery catalog
+SCN              RSP Time            Type       Time                Name
+---------------- ------------------- ---------- ------------------- ----
+2609797                                         2024-03-27:15:18:34 RP_CDB
+2611021                              GUARANTEED 2024-03-27:15:21:12 GRP_CDB
+2599219                                         2024-03-27:14:00:26 RP_ORCLPDB
+2609797                                         2024-03-27:15:12:47 RP_PDB_FROM_CDB
+2609797                              GUARANTEED 2024-03-27:15:14:47 GRP_PDB_FROM_CDB
+2609797                                         2024-03-27:15:16:54 CRP_PDB_FROM_CDB
+
+RMAN> list restore point rp_orclpdb;
+
+SCN              RSP Time            Type       Time                Name
+---------------- ------------------- ---------- ------------------- ----
+2599219                                         2024-03-27:14:00:26 RP_ORCLPDB
+
+--Displaying restore points
+sqlplus / as sysdba
+col name format a30
+select name, guarantee_flashback_database, pdb_restore_point, clean_pdb_restore_point, 
+pdb_incarnation#, storage_size from v$restore_point;
+
+--DROP RESTORE POINTS
+drop restore point grp_cdb;
+drop restore point GRP_PDB_FROM_CDB;
+
+alter session set container=orclpdb;
+drop restore point RP_ORCLPDB;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

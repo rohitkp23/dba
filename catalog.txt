@@ -1,0 +1,188 @@
+sqlplus / as sysdba
+
+select name, open_mode from v$pdbs;
+
+alter pluggable database orclpdb open;
+
+alter session set container = orclpdb;
+
+show con_name
+
+alter pluggable database orclpdb save state;
+
+
+---DISPLAY TABLESPACES
+select tablespace_name from dba_tablespaces;
+
+---------CREATE TABLESPACE--------------
+create tablespace tbs_data
+datafile '/u01/app/oracle/oradata/tbs_data01.dbf' size 10m
+autoextend on next 1m maxsize 100m;
+
+alter tablespace tbs_data
+add datafile '/u01/app/oracle/oradata/tbs_data02.dbf' size 10m
+autoextend on next 1m maxsize 100m;
+
+create tablespace tbs_indx
+datafile '/u01/app/oracle/oradata/tbs_indx01.dbf' size 10m
+autoextend on next 1m maxsize 100m;
+
+---DISPLAY USERS
+SELECT USERNAME FROM ALL_USERS;
+
+-------CREATE USER--------------
+create user mytest
+identified by rkp23
+default tablespace tbs_data
+temporary tablespace temp;
+
+grant connect, resource, dba to mytest;
+
+grant unlimited tablespace to mytest;
+
+
+---ADD AN ENTRY TO TNSNAMES FOR ORCLPDB
+vi tnsnames.ora
+ORCLPDB =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = localhost)(PORT = 1521))
+    (CONNECT_DATA =
+      (SERVER = DEDICATED)
+      (SERVICE_NAME = orclpdb)
+    )
+  )
+
+
+
+sqlplus mytest/rkp23@orclpdb;
+
+-----CREATE TABLE
+CREATE TABLE test_tb1(id number, name varchar2(30), surname varchar2(30), birth_date date) tablespace tbs_data;
+
+grant all on test_tb1 to public;
+
+INSERT INTO test_tb1 (id, name, surname, birth_date)
+VALUES (1, 'John', 'Doe', TO_DATE('1990-05-15', 'YYYY-MM-DD'));
+
+INSERT INTO test_tb1 (id, name, surname, birth_date)
+VALUES  (2, 'Jane', 'Smith', TO_DATE('1985-08-20', 'YYYY-MM-DD'));
+
+INSERT INTO test_tb1 (id, name, surname, birth_date)
+VALUES   (3, 'Michael', 'Johnson', TO_DATE('1978-12-10', 'YYYY-MM-DD'));
+
+commit;
+
+
+----STARTING AND INTERACTING WITH RMAN CLIENT
+lsnrctl status;
+lsnrctl start;
+
+rman
+
+--connect to the db
+connect target/
+
+--connect to the db when running rman prompt
+rman target /
+
+--to display the configuration
+show all;
+
+--Configure Network
+enable network adapters on both machine 
+
+Adapter 1 to: Intrernal n/w
+Name:pubnet 
+
+Adapter 2 to: Intrernal n/w
+Name:privnet 
+
+Adapter1 to: NAT
+
+Restart both vms after this
+vi /etc/hosts
+192.168.56.101  rmancat.localdomain       rmancat
+192.168.56.100  oracle linux.localdomain  oracle linux
+
+--Check connection
+ping rmancat 
+from oracle linux machine
+
+ping primary
+from rmancat machine
+
+--Add to tnsnames.ora
+vi $ORACLE_HOME/network/admin/tnsnames.ora
+
+rmancat =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = rmancat.localhost)(PORT = 1521))
+    (CONNECT_DATA =
+      (SERVER = DEDICATED)
+      (SERVICE_NAME = rmancat)
+    )
+  )
+
+orclpdb =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = orclpdb.localhost)(PORT = 1521))
+    (CONNECT_DATA =
+      (SERVER = DEDICATED)
+      (SERVICE_NAME = orclpdb)
+    )
+  )
+
+
+lsnrctl start
+
+sqlplus / as sysdba
+
+startup
+
+------------CREATE RMAN CATALOG DATABASE-----------
+--ON RMANCAT
+select name,open_mode from v$database;
+show pdbs
+alter pluggable database orclpdb open;
+alter pluggable database orclpdb save state;
+
+----Change session to pdb database
+alter session set container = orclpdb;
+show con_name
+show parameter db_create_file_dest
+ALTER SYSTEM SET db_create_file_dest = '/u01/app/oracle/oradata';
+
+----Create tablespace to store backup information of registered databases
+create tablespace tbs_catalog
+datafile '/u01/app/oracle/oradata/catalog01.dbf' size 100m
+autoextend on next 10m maxsize 1024m;
+
+
+---Create user who will work as a recovery catalog owner
+create user rcatown
+identified by rkp23
+default tablespace tbs_catalog
+temporary tablespace temp
+quota unlimited on tbs_catalog;
+
+grant connect, resource, recovery_catalog_owner TO rcatown;
+
+
+---CONNECT RMAN TO orclpdb DATABASE WITH CATALOG CLAUSE
+rman catalog rcatown/rkp23@orclpdb;
+
+--Apply to create catalog database command
+RMAN> create catalog
+RMAN> exit
+
+--CONNECT RMAN WITH TARGET AND CATALOG CLAUSE
+rman target sys/oracle@primary catalog rcatown@orclpdb
+
+
+--REGISTER TARGET DATABASE
+RMAN> register database;
+RMAN> report schema;
+
+
+
+
